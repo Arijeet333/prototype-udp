@@ -102,3 +102,38 @@ class ChannelSocket:
             self.closed = True                       # tell the worker to stop
             self.lock.notify()
         self.sock.close()
+if __name__ == "__main__":
+    import argparse
+    import socket
+
+    parser = argparse.ArgumentParser(description="Test the channel emulator in isolation")
+    parser.add_argument("--loss", type=float, default=0.1)
+    parser.add_argument("--duplicate", type=float, default=0.0)
+    parser.add_argument("--corrupt", type=float, default=0.0)
+    parser.add_argument("--seed", type=int, default=42)
+    args = parser.parse_args()
+
+    receiver = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    receiver.bind(("127.0.0.1", 0))
+    receiver_addr = receiver.getsockname()
+    receiver.settimeout(2)
+
+    sender = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    chan = ChannelSocket(sock=sender, loss=args.loss, duplicate=args.duplicate,
+                         corrupt=args.corrupt, seed=args.seed)
+
+    message = b"Hello, this is a test packet from Shlok Jaiswal"
+    print(f"Sent: {message}")
+
+    chan.sendto(message, receiver_addr)
+
+    try:
+        received, _ = receiver.recvfrom(4096)
+        print(f"Received: {received}")
+        print(f"Intact: {received == message}")
+    except socket.timeout:
+        print("Packet was dropped by the channel (expected with high loss)")
+
+    print(f"Dropped: {chan.dropped}, Duplicated: {chan.duplicated}, Corrupted: {chan.corrupted}")
+    sender.close()
+    receiver.close()
